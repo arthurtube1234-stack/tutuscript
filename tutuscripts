@@ -37,19 +37,12 @@ local Window = Fluent:CreateWindow({
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
--- Abas
 local TabMain = Window:AddTab({ Title = "Main", Icon = "gamepad-2" })
 local TabScript = Window:AddTab({ Title = "Scripts", Icon = "code" })
 
 -- Variáveis
-local currentSpeed = humanoid.WalkSpeed
-local currentJump = humanoid.JumpPower
-local flying = false
-local flySpeed = 50
-local bodyVelocity
-local flyConnection
-local noclip = false
-local noclipConnection
+local flying, bodyVelocity, flyConnection = false, nil, nil
+local noclip, noclipConnection = false, nil
 local infiniteJump = false
 local espEnabled = false
 local hitboxEnabled = false
@@ -79,7 +72,7 @@ local function startFly()
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.new(0,1,0) end
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then moveDir -= Vector3.new(0,1,0) end
 
-        bodyVelocity.Velocity = (moveDir.Magnitude > 0 and moveDir.Unit * flySpeed) or Vector3.new()
+        bodyVelocity.Velocity = (moveDir.Magnitude > 0 and moveDir.Unit * 50) or Vector3.new()
     end)
 end
 
@@ -96,7 +89,7 @@ local function startNoClip()
     noclipConnection = RunService.Stepped:Connect(function()
         if character then
             for _, v in pairs(character:GetDescendants()) do
-                if v:IsA("BasePart") and v.CanCollide then
+                if v:IsA("BasePart") then
                     v.CanCollide = false
                 end
             end
@@ -126,7 +119,7 @@ local function createTPTool()
     tool.Activated:Connect(function()
         local mouse = player:GetMouse()
         if mouse and mouse.Hit then
-            character:MoveTo(mouse.Hit.p)
+            character:MoveTo(mouse.Hit.Position)
         end
     end)
 end
@@ -136,13 +129,17 @@ local function enableESP()
     espEnabled = true
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= player and plr.Character then
-            local box = Instance.new("BoxHandleAdornment")
-            box.Adornee = plr.Character:FindFirstChild("HumanoidRootPart")
-            box.Size = Vector3.new(2, 5, 2)
-            box.Color3 = Color3.fromRGB(0,255,0)
-            box.Transparency = 0.5
-            box.AlwaysOnTop = true
-            box.Parent = plr.Character:FindFirstChild("HumanoidRootPart")
+            local root = plr.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local box = Instance.new("BoxHandleAdornment")
+                box.Adornee = root
+                box.Size = Vector3.new(2,5,2)
+                box.Color3 = Color3.fromRGB(0,255,0)
+                box.Transparency = 0.5
+                box.AlwaysOnTop = true
+                box.Name = "ESPBOX"
+                box.Parent = root
+            end
         end
     end
 end
@@ -150,49 +147,39 @@ end
 local function disableESP()
     espEnabled = false
     for _, plr in pairs(Players:GetPlayers()) do
-        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            for _, v in pairs(plr.Character.HumanoidRootPart:GetChildren()) do
-                if v:IsA("BoxHandleAdornment") then v:Destroy() end
+        if plr.Character then
+            local root = plr.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local box = root:FindFirstChild("ESPBOX")
+                if box then box:Destroy() end
             end
         end
     end
 end
 
--- Hitbox Expander Avançado com Multiplier
+-- Hitbox
 local function updateHitbox(plr)
     if plr == player then return end
     local char = plr.Character
     if not char then return end
-
-    local parts = {"HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso"}
-    for _, partName in pairs(parts) do
-        local part = char:FindFirstChild(partName)
+    local parts = {"HumanoidRootPart","Head","Torso","UpperTorso","LowerTorso"}
+    for _, name in pairs(parts) do
+        local part = char:FindFirstChild(name)
         if part and part:IsA("BasePart") then
             if hitboxEnabled then
-                if not part:FindFirstChild("HitboxEXP") then
-                    local box = Instance.new("BoxHandleAdornment")
-                    box.Name = "HitboxEXP"
-                    box.Adornee = part
-                    box.Size = part.Size * hitboxSizeMultiplier
-                    box.Color3 = Color3.fromRGB(255, 0, 0)
-                    box.Transparency = 0.5
-                    box.AlwaysOnTop = true
-                    box.Parent = part
-                else
-                    part.HitboxEXP.Size = part.Size * hitboxSizeMultiplier
-                end
+                local box = part:FindFirstChild("HitboxEXP") or Instance.new("BoxHandleAdornment")
+                box.Name = "HitboxEXP"
+                box.Adornee = part
+                box.Size = part.Size * hitboxSizeMultiplier
+                box.Color3 = Color3.fromRGB(255,0,0)
+                box.Transparency = 0.5
+                box.AlwaysOnTop = true
+                box.Parent = part
             else
-                local existing = part:FindFirstChild("HitboxEXP")
-                if existing then existing:Destroy() end
+                local box = part:FindFirstChild("HitboxEXP")
+                if box then box:Destroy() end
             end
         end
-    end
-end
-
-local function toggleHitbox(state)
-    hitboxEnabled = state
-    for _, plr in pairs(Players:GetPlayers()) do
-        updateHitbox(plr)
     end
 end
 
@@ -202,28 +189,17 @@ Players.PlayerAdded:Connect(function(plr)
     end)
 end)
 
-RunService.Heartbeat:Connect(function()
-    if hitboxEnabled then
-        for _, plr in pairs(Players:GetPlayers()) do
-            updateHitbox(plr)
-        end
-    end
-end)
-
 -- Kill Aura
-local killDelay = 0.1
 local function killAura()
     if not killAuraEnabled then return end
-    local weapon = character:FindFirstChildOfClass("Tool")
-    if not weapon then return end
-
+    local tool = character:FindFirstChildOfClass("Tool")
+    if not tool then return end
     for _, plr in pairs(Players:GetPlayers()) do
-        if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+        if plr ~= player and plr.Character then
             local hum = plr.Character:FindFirstChildOfClass("Humanoid")
             local root = plr.Character:FindFirstChild("HumanoidRootPart")
             if hum and hum.Health > 0 and root then
-                local distance = (root.Position - rootPart.Position).Magnitude
-                if distance <= 15 then
+                if (root.Position - rootPart.Position).Magnitude <= 15 then
                     hum:TakeDamage(10)
                 end
             end
@@ -231,115 +207,43 @@ local function killAura()
     end
 end
 
+-- Heartbeat
 RunService.Heartbeat:Connect(function()
-    if killAuraEnabled then killAura() end
+    if hitboxEnabled then
+        for _, plr in pairs(Players:GetPlayers()) do
+            updateHitbox(plr)
+        end
+    end
+    if killAuraEnabled then
+        killAura()
+    end
 end)
 
---================= UI Main =================--
+--================= UI ===================
 
--- Fly Mobile
-TabMain:AddButton({
-    Title = "Fly Mobile",
-    Description = "Executa script de voo para mobile",
-    Callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/XNEOFF/FlyGuiV3/main/FlyGuiV3.txt"))()
-    end
-})
+-- Fly
+TabMain:AddToggle("FlyPCToggle",{Title="Fly PC",Default=false,Callback=function(state) if state then startFly() else stopFly() end end})
 
--- Fly PC
-TabMain:AddToggle("FlyPCToggle", {
-    Title = "Fly PC",
-    Description = "Ativa/desativa voo no PC",
-    Default = false,
-    Callback = function(state) if state then startFly() else stopFly() end end
-})
+-- Speed/Jump
+TabMain:AddSlider("SpeedSlider",{Title="Velocidade",Min=16,Max=200,Default=humanoid.WalkSpeed,Callback=function(val) humanoid.WalkSpeed = val end})
+TabMain:AddSlider("JumpSlider",{Title="Força do Pulo",Min=50,Max=300,Default=humanoid.JumpPower,Callback=function(val) humanoid.JumpPower = val end})
 
--- Velocidade Slider
-TabMain:AddSlider("SpeedSlider", {
-    Title = "Velocidade",
-    Description = "Modificar a velocidade",
-    Default = humanoid.WalkSpeed,
-    Min = 16,
-    Max = 200,
-    Rounding = 1,
-    Callback = function(val) humanoid.WalkSpeed = val end
-})
-
--- Pulo Slider
-TabMain:AddSlider("JumpSlider", {
-    Title = "Força do Pulo",
-    Description = "Modificar força do pulo",
-    Default = humanoid.JumpPower,
-    Min = 50,
-    Max = 300,
-    Rounding = 1,
-    Callback = function(val) humanoid.JumpPower = val end
-})
-
--- NoClip
-TabMain:AddToggle("NoClipToggle", {
-    Title = "NoClip",
-    Description = "Atravessar paredes",
-    Default = false,
-    Callback = function(state) if state then startNoClip() else stopNoClip() end end
-})
-
--- Infinite Jump
-TabMain:AddToggle("InfJumpToggle", {
-    Title = "Infinite Jump",
-    Description = "Pular infinitamente",
-    Default = false,
-    Callback = function(state) infiniteJump = state end
-})
+-- NoClip/InfiniteJump
+TabMain:AddToggle("NoClipToggle",{Title="NoClip",Default=false,Callback=function(state) if state then startNoClip() else stopNoClip() end end})
+TabMain:AddToggle("InfJumpToggle",{Title="Infinite Jump",Default=false,Callback=function(state) infiniteJump = state end})
 
 -- TP Tool
-TabMain:AddButton({
-    Title = "TP Tool",
-    Description = "Ferramenta para teleportar ao clicar",
-    Callback = createTPTool
-})
+TabMain:AddButton({Title="TP Tool",Callback=createTPTool})
 
--- ESP Toggle
-TabMain:AddToggle("ESPToggle", {
-    Title = "ESP",
-    Description = "Ativa/Desativa ESP",
-    Default = false,
-    Callback = function(state)
-        if state then enableESP() else disableESP() end
-    end
-})
+-- ESP
+TabMain:AddToggle("ESPToggle",{Title="ESP",Default=false,Callback=function(state) if state then enableESP() else disableESP() end end})
 
--- Hitbox Expander com Slider
-TabMain:AddToggle("HitboxToggle", {
-    Title = "Hitbox Expander",
-    Description = "Aumenta hitbox dos inimigos",
-    Default = false,
-    Callback = toggleHitbox
-})
-TabMain:AddSlider("HitboxSlider", {
-    Title = "Tamanho Hitbox",
-    Description = "Ajusta o tamanho do hitbox",
-    Default = 2.5,
-    Min = 1,
-    Max = 5,
-    Rounding = 0.1,
-    Callback = function(val) hitboxSizeMultiplier = val end
-})
+-- Hitbox
+TabMain:AddToggle("HitboxToggle",{Title="Hitbox Expander",Default=false,Callback=function(state) hitboxEnabled=state end})
+TabMain:AddSlider("HitboxSlider",{Title="Tamanho Hitbox",Min=1,Max=5,Default=2.5,Callback=function(val) hitboxSizeMultiplier=val end})
 
 -- Kill Aura
-TabMain:AddToggle("KillAuraToggle", {
-    Title = "Kill Aura",
-    Description = "Ataca inimigos próximos automaticamente",
-    Default = false,
-    Callback = function(state) killAuraEnabled = state end
-})
+TabMain:AddToggle("KillAuraToggle",{Title="Kill Aura",Default=false,Callback=function(state) killAuraEnabled=state end})
 
---================= Scripts =================--
-
-TabScript:AddButton({
-    Title = "Infinite Yield",
-    Description = "Executa Infinite Yield",
-    Callback = function()
-        loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
-    end
-})
+-- Scripts
+TabScript:AddButton({Title="Infinite Yield",Callback=function() loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))() end})
