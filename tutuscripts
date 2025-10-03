@@ -54,6 +54,7 @@ local infiniteJump = false
 local espEnabled = false
 local hitboxEnabled = false
 local killAuraEnabled = false
+local hitboxSizeMultiplier = 2.5
 
 --================= Funções =================--
 
@@ -157,8 +158,8 @@ local function disableESP()
     end
 end
 
--- Hitbox Expander Avançado
-local function updateHitbox(plr, state)
+-- Hitbox Expander Avançado com Multiplier
+local function updateHitbox(plr)
     if plr == player then return end
     local char = plr.Character
     if not char then return end
@@ -167,16 +168,18 @@ local function updateHitbox(plr, state)
     for _, partName in pairs(parts) do
         local part = char:FindFirstChild(partName)
         if part and part:IsA("BasePart") then
-            if state then
+            if hitboxEnabled then
                 if not part:FindFirstChild("HitboxEXP") then
                     local box = Instance.new("BoxHandleAdornment")
                     box.Name = "HitboxEXP"
                     box.Adornee = part
-                    box.Size = part.Size * 2.5
+                    box.Size = part.Size * hitboxSizeMultiplier
                     box.Color3 = Color3.fromRGB(255, 0, 0)
                     box.Transparency = 0.5
                     box.AlwaysOnTop = true
                     box.Parent = part
+                else
+                    part.HitboxEXP.Size = part.Size * hitboxSizeMultiplier
                 end
             else
                 local existing = part:FindFirstChild("HitboxEXP")
@@ -189,19 +192,26 @@ end
 local function toggleHitbox(state)
     hitboxEnabled = state
     for _, plr in pairs(Players:GetPlayers()) do
-        updateHitbox(plr, state)
+        updateHitbox(plr)
     end
 end
 
 Players.PlayerAdded:Connect(function(plr)
     plr.CharacterAdded:Connect(function()
-        if hitboxEnabled then updateHitbox(plr, true) end
+        if hitboxEnabled then updateHitbox(plr) end
     end)
 end)
 
--- Kill Aura Avançado
-local killDelay = 0.1
+RunService.Heartbeat:Connect(function()
+    if hitboxEnabled then
+        for _, plr in pairs(Players:GetPlayers()) do
+            updateHitbox(plr)
+        end
+    end
+end)
 
+-- Kill Aura
+local killDelay = 0.1
 local function killAura()
     if not killAuraEnabled then return end
     local weapon = character:FindFirstChildOfClass("Tool")
@@ -221,10 +231,8 @@ local function killAura()
     end
 end
 
-RunService.Heartbeat:Connect(function(deltaTime)
-    if killAuraEnabled then
-        killAura()
-    end
+RunService.Heartbeat:Connect(function()
+    if killAuraEnabled then killAura() end
 end)
 
 --================= UI Main =================--
@@ -301,12 +309,21 @@ TabMain:AddToggle("ESPToggle", {
     end
 })
 
--- Hitbox Expander
+-- Hitbox Expander com Slider
 TabMain:AddToggle("HitboxToggle", {
     Title = "Hitbox Expander",
     Description = "Aumenta hitbox dos inimigos",
     Default = false,
     Callback = toggleHitbox
+})
+TabMain:AddSlider("HitboxSlider", {
+    Title = "Tamanho Hitbox",
+    Description = "Ajusta o tamanho do hitbox",
+    Default = 2.5,
+    Min = 1,
+    Max = 5,
+    Rounding = 0.1,
+    Callback = function(val) hitboxSizeMultiplier = val end
 })
 
 -- Kill Aura
